@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>12. The Telephone Death - 3D RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;600;800&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050508;
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+            user-select: none;
+        }
+
+        .font-mono-tech {
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .interactive-ui {
+            pointer-events: auto;
+        }
+
+        /* Custom Scrollbar for Phone and Menus */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ef4444;
+            border-radius: 3px;
+        }
+
+        /* Retro CRT Flicker Effect for Phone Interface */
+        .crt-overlay::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 20;
+            background-size: 100% 3px, 3px 100%;
+            pointer-events: none;
+        }
+
+        /* Pulse glow animation */
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
+        }
+
+        .glow-red {
+            animation: pulse-red 2s infinite;
+        }
+
+        .clip-corner {
+            clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+        }
+    </style>
+</head>
+<body class="select-none">
+
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Main Game HUD Overlay -->
+    <div id="hud" class="hud-overlay flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- Top Navigation / Stats Bar -->
+        <div class="flex justify-between items-start gap-4">
+            
+            <!-- Player Stats & Class Card -->
+            <div class="interactive-ui bg-slate-900/85 border border-red-500/40 backdrop-blur-md p-4 rounded-xl shadow-2xl max-w-xs w-full text-xs font-mono-tech">
+                <div class="flex items-center justify-between mb-2">
+                    <span id="player-name-class" class="text-red-400 font-bold text-sm tracking-wider">ALECK [PROTOCOL ENFORCER]</span>
+                    <span id="player-level" class="bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded text-xs">LVL 1</span>
+                </div>
+
+                <!-- Health Bar -->
+                <div class="mb-1.5">
+                    <div class="flex justify-between text-[10px] text-gray-300 mb-0.5">
+                        <span>STABILITY (HP)</span>
+                        <span id="hp-text">100 / 100</span>
+                    </div>
+                    <div class="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-700">
+                        <div id="hp-bar" class="bg-gradient-to-r from-red-600 to-emerald-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Stamina Bar -->
+                <div class="mb-1.5">
+                    <div class="flex justify-between text-[10px] text-gray-300 mb-0.5">
+                        <span>STAMINA (MP)</span>
+                        <span id="mp-text">50 / 50</span>
+                    </div>
+                    <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-700">
+                        <div id="mp-bar" class="bg-cyan-500 h-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Guilt & Trust Level Indicators -->
+                <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800">
+                    <div>
+                        <div class="text-[9px] text-gray-400">GUILT SPECTRUM</div>
+                        <div id="guilt-text" class="text-red-400 font-bold text-xs">0% (Calm)</div>
+                    </div>
+                    <div>
+                        <div class="text-[9px] text-gray-400">TRUST PROTOCOL</div>
+                        <div id="trust-text" class="text-amber-400 font-bold text-xs">50% (Neutral)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Center Quest Bar & Boss HP -->
+            <div class="flex flex-col items-center max-w-md w-full">
+                <!-- Boss Health Bar (Hidden by default) -->
+                <div id="boss-hud" class="hidden interactive-ui w-full bg-slate-950/90 border-2 border-red-600 p-3 rounded-lg mb-3 shadow-red-900/50 shadow-lg">
+                    <div class="flex justify-between text-xs font-mono-tech text-red-400 font-bold mb-1">
+                        <span id="boss-name">DENIED PROTOCOL - ALDRICH'S PHANTOM</span>
+                        <span id="boss-hp-text">1000 / 1000</span>
+                    </div>
+                    <div class="w-full bg-slate-900 h-3.5 rounded overflow-hidden border border-red-800">
+                        <div id="boss-hp-bar" class="bg-red-600 h-full transition-all duration-200" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Story Header Banner -->
+                <div class="interactive-ui bg-slate-900/80 border border-slate-700 backdrop-blur px-4 py-2 rounded-full text-center text-xs font-mono-tech text-slate-300">
+                    <span class="text-red-500 font-bold"><i class="fa-solid font-bold fa-phone-slash mr-1"></i> 12. THE TELEPHONE DEATH</span> | <span class="text-gray-400">March 3, 2017</span>
+                </div>
+            </div>
+
+            <!-- Mini-map & Quick Controls -->
+            <div class="interactive-ui flex flex-col items-end gap-2">
+                <div class="bg-slate-900/85 border border-red-500/40 p-2 rounded-xl backdrop-blur-md shadow-lg text-center">
+                    <canvas id="minimap" width="110" height="110" class="rounded-lg bg-slate-950 border border-slate-800"></canvas>
+                    <div class="text-[9px] font-mono-tech text-gray-400 mt-1">MAP : TOWN DISTRICT 2017</div>
+                </div>
+
+                <div class="flex gap-2">
+                    <button id="btn-inventory" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-briefcase text-amber-400"></i> Inventory [I]
+                    </button>
+                    <button id="btn-skills" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-code-branch text-cyan-400"></i> Skills [K]
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Middle Prompt Notification Center -->
+        <div class="flex flex-col items-center justify-center pointer-events-none my-auto">
+            <div id="interaction-prompt" class="hidden interactive-ui bg-slate-900/90 border-2 border-amber-500 px-6 py-3 rounded-xl backdrop-blur-md shadow-2xl text-center transform animate-bounce">
+                <div id="prompt-action" class="text-amber-400 font-bold text-sm font-mono-tech">PRESS [E] TO INTERACT</div>
+                <div id="prompt-desc" class="text-xs text-gray-300">Public Telephone Station #04</div>
+            </div>
+
+            <div id="call-incoming-prompt" class="hidden interactive-ui glow-red bg-red-950/90 border-2 border-red-500 p-4 rounded-2xl backdrop-blur-md text-center max-w-sm mt-4">
+                <div class="text-red-400 text-xs font-mono-tech font-bold animate-pulse mb-1"><i class="fa-solid fa-phone-volume mr-1"></i> INCOMING EMERGENCY CALL FROM ALDRICH...</div>
+                <div class="text-white text-sm font-semibold mb-3">"Aleck, please answer! The fire is getting closer!"</div>
+                <div class="flex justify-center gap-3">
+                    <button id="btn-answer-call" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition border border-emerald-400">
+                        [F] ANSWER CALL
+                    </button>
+                    <button id="btn-deny-call" class="bg-red-700 hover:bg-red-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition border border-red-400">
+                        [DENY PROTOCOL]
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom HUD: Active Quest Tracker & Controls Guide -->
+        <div class="flex justify-between items-end gap-4">
+            
+            <!-- Quest Tracker Panel -->
+            <div class="interactive-ui bg-slate-900/85 border border-slate-700 backdrop-blur-md p-4 rounded-xl max-w-md w-full shadow-lg">
+                <div class="text-xs font-mono-tech text-amber-400 font-bold mb-1 flex items-center justify-between">
+                    <span><i class="fa-solid fa-compass mr-1"></i> ACTIVE QUEST</span>
+                    <span id="quest-stage" class="text-slate-400 text-[10px]">MAIN OBJECTIVE</span>
+                </div>
+                <div id="quest-title" class="text-white font-semibold text-sm mb-1">The Burning Call</div>
+                <div id="quest-desc" class="text-xs text-gray-300 leading-relaxed">
+                    Trace Aldrich's emergency text protocol. Head towards the ringing telephone booth near zone 1.
+                </div>
+            </div>
+
+            <!-- Controls Quick Helper -->
+            <div class="interactive-ui bg-slate-900/70 border border-slate-800 backdrop-blur px-4 py-3 rounded-xl text-[11px] font-mono-tech text-gray-400 hidden lg:block">
+                <div class="text-slate-300 font-bold mb-1 border-b border-slate-700 pb-0.5">CONTROLS</div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                    <span><b class="text-amber-400">WASD</b> : Move</span>
+                    <span><b class="text-amber-400">SPACE</b> : Jump / Dodge</span>
+                    <span><b class="text-amber-400">Mouse</b> : Look around</span>
+                    <span><b class="text-amber-400">E</b> : Interact / Terminal</span>
+                    <span><b class="text-amber-400">L-Click</b> : Water Pulse</span>
+                    <span><b class="text-amber-400">V</b> : Toggle Camera View</span>
+                    <span><b class="text-amber-400">F</b> : Answer/Text Protocol</span>
+                    <span><b class="text-amber-400">I / K</b> : Menus</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Interactive Telephone & SMS Modal -->
+    <div id="modal-phone" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="crt-overlay bg-slate-950 border-2 border-red-500/80 rounded-2xl w-full max-w-md p-5 shadow-2xl flex flex-col h-[520px]">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                    <span class="font-mono-tech text-xs text-red-400 tracking-wider">SERIAL: ALDRICH-2017-0303</span>
+                </div>
+                <button onclick="closeModal('modal-phone')" class="text-gray-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <!-- SMS Message History Display -->
+            <div id="phone-chat-history" class="flex-1 overflow-y-auto my-3 space-y-3 p-2 font-mono-tech text-xs">
+                <!-- Dynamic messages appended here -->
+            </div>
+
+            <!-- Dialogue Options / Actions -->
+            <div id="phone-options" class="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                <!-- Dynamic choice buttons appended here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Modal -->
+    <div id="modal-inventory" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl p-6 shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center pb-4 border-b border-slate-800">
+                <h2 class="text-lg font-bold text-amber-400 font-mono-tech flex items-center gap-2">
+                    <i class="fa-solid fa-boxes-stacked"></i> INVENTORY & EQUIPMENT LOG
+                </h2>
+                <button onclick="closeModal('modal-inventory')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 my-4 flex-1 overflow-hidden">
+                <!-- Inventory Items List -->
+                <div id="inventory-list" class="md:col-span-2 bg-slate-950 p-3 rounded-xl border border-slate-800 overflow-y-auto grid grid-cols-2 gap-2 h-64 md:h-auto">
+                    <!-- Dynamic inventory slots -->
+                </div>
+
+                <!-- Selected Item Detail Panel -->
+                <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <div id="item-detail-title" class="font-bold text-sm text-white mb-1">Select an Item</div>
+                        <div id="item-detail-type" class="text-[10px] text-amber-400 font-mono-tech mb-2">CATEGORY</div>
+                        <p id="item-detail-desc" class="text-xs text-gray-400 leading-relaxed">Hover or click an item to view properties and protocols.</p>
+                    </div>
+                    <button id="btn-use-item" class="hidden w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-lg text-xs mt-4 transition">
+                        USE / EQUIP ITEM
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skill Tree Modal -->
+    <div id="modal-skills" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border border-cyan-500/50 rounded-2xl w-full max-w-2xl p-6 shadow-2xl">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                <div>
+                    <h2 class="text-lg font-bold text-cyan-400 font-mono-tech flex items-center gap-2">
+                        <i class="fa-solid fa-sitemap"></i> PROTOCOL SKILL TREE
+                    </h2>
+                    <div class="text-xs text-gray-400">Available Skill Points: <span id="skill-points-count" class="text-cyan-300 font-bold">2</span></div>
+                </div>
+                <button onclick="closeModal('modal-skills')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <!-- Skill Grid -->
+            <div id="skills-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4">
+                <!-- Skill cards added dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Story Prologue / Game Start Screen -->
+    <div id="start-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 p-6 text-center">
+        <div class="max-w-xl w-full border border-red-600/40 bg-slate-900/90 p-8 rounded-2xl backdrop-blur-xl shadow-2xl relative overflow-hidden">
+            <div class="absolute -right-12 -bottom-12 text-red-600/10 text-9xl pointer-events-none"><i class="fa-solid fa-phone"></i></div>
+            
+            <div class="text-red-500 font-mono-tech text-xs tracking-widest font-bold mb-2">MARCH 3, 2017 • CHAPTER 4</div>
+            <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-2 tracking-tight">12. THE TELEPHONE DEATH</h1>
+            <p class="text-xs text-amber-400 font-mono-tech mb-6">By Abraham Lincoln Bell</p>
+
+            <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 text-left text-xs text-gray-300 space-y-2 mb-6 font-mono-tech leading-relaxed">
+                <p class="text-red-400 font-semibold">"Aleck, why didn't you answer my text...?"</p>
+                <p>Once upon a time, Aleck dialed a serial telephone number for his friend Aldrich. But Aldrich denied in favor of texting. Hours later, Aldrich was caught in a tragic fire accident.</p>
+                <p>For endless hours, Aldrich texted Aleck for help. But Aleck denied replying out of guilt and protocol fear. Aldrich perished in the flames.</p>
+                <div class="p-2 bg-red-950/50 border border-red-800/50 rounded text-red-300 text-[11px] font-sans italic mt-2">
+                    <b>Moral Lesson:</b> "Sometimes when there is trouble we must receive a protocol/text don't deny so there's no mistrust."
+                </div>
+            </div>
+
+            <!-- Class Selection -->
+            <div class="mb-6 text-left">
+                <label class="block text-xs font-mono-tech text-gray-400 mb-2">CHOOSE ALECK'S CLASS PROTOCOL:</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="selectClass('Protocol Enforcer', this)" class="class-btn border-2 border-red-500 bg-red-950/40 text-white p-2 rounded-lg text-xs font-mono-tech font-bold text-center">
+                        <i class="fa-solid fa-shield-halved text-red-400 mb-1 block text-base"></i> Protocol Enforcer
+                    </button>
+                    <button onclick="selectClass('Text Searcher', this)" class="class-btn border border-slate-700 bg-slate-950 text-gray-400 p-2 rounded-lg text-xs font-mono-tech text-center">
+                        <i class="fa-solid fa-message text-cyan-400 mb-1 block text-base"></i> Text Searcher
+                    </button>
+                    <button onclick="selectClass('Flame Rescuer', this)" class="class-btn border border-slate-700 bg-slate-950 text-gray-400 p-2 rounded-lg text-xs font-mono-tech text-center">
+                        <i class="fa-solid fa-fire-extinguisher text-amber-400 mb-1 block text-base"></i> Flame Rescuer
+                    </button>
+                </div>
+            </div>
+
+            <button id="btn-start-game" onclick="startGame()" class="w-full bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-extrabold py-3.5 rounded-xl shadow-lg shadow-red-900/50 text-sm tracking-wider transition transform hover:-translate-y-0.5">
+                ENTER THE BURNING DISTRICT
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================================================
+           1. AUDIO SYNTHESIZER (WEB AUDIO API)
+           ========================================================================= */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playBeep(freq = 800, type = 'sine', duration = 0.1) {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+
+            playRingtone() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [900, 1200, 900, 1200].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.15);
+                    gain.gain.setValueAtTime(0.1, now + idx * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.15 + 0.12);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.15);
+                    osc.stop(now + idx * 0.15 + 0.12);
+                });
+            }
+
+            playWaterPulse() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playHitSound() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(40, this.ctx.currentTime + 0.25);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+        }
+
+        const audio = new SoundFX();
+
+        /* =========================================================================
+           2. GAME STATE MANAGEMENT & PLAYER STATS
+           ========================================================================= */
+        let gameState = {
+            started: false,
+            cameraMode: 'third', // 'third' or 'first'
+            player: {
+                name: 'Aleck',
+                class: 'Protocol Enforcer',
+                level: 1,
+                xp: 0,
+                hp: 100,
+                maxHp: 100,
+                mp: 50,
+                maxMp: 50,
+                guilt: 0, // Guilt Level (0 to 100)
+                trust: 50, // Trust Level
+                skillPoints: 2,
+                position: new THREE.Vector3(0, 1, 15),
+                rotationY: 0
+            },
+            quest: {
+                title: "The Burning Call",
+                stage: 1, // 1: Reach Phone, 2: Defeat Guilt Specters, 3: Answer Aldrich, 4: Boss Fight
+                description: "Trace Aldrich's emergency text protocol. Reach the ringing telephone booth near zone 1."
+            },
+            inventory: [
+                { id: 'extinguisher', name: 'Emergency Extinguisher', type: 'Weapon', desc: 'Sprays pressurized water waves to extinguish fire specters.', usable: true },
+                { id: 'relay_key', name: 'Telephone Serial Relay', type: 'Key Item', desc: 'Enables priority call routing across fire zones.', usable: false },
+                { id: 'protocol_manual', name: '2017 Emergency Protocol', type: 'Document', desc: 'Rules state you must never ignore an emergency text.', usable: true }
+            ],
+            skills: [
+                { id: 'instant_answer', name: 'Instant Answer', cost: 1, unlocked: true, desc: 'Reduces Guilt build-up when receiving emergency calls.' },
+                { id: 'flame_shield', name: 'Flame Shield', cost: 1, unlocked: false, desc: 'Generates a temporary protective shield around Aleck.' },
+                { id: 'text_decoder', name: 'Text Decoder', cost: 2, unlocked: false, desc: 'Increases combat damage against Guilt Specters by 35%.' },
+                { id: 'empathy_burst', name: 'Empathy Burst', cost: 2, unlocked: false, desc: 'Restores 40 HP and reduces Guilt level.' }
+            ],
+            enemies: [],
+            boss: null
+        };
+
+        let scene, camera, renderer;
+        let playerMesh, waterStreamParticles = [];
+        let fireParticles = [];
+        let phoneBooths = [];
+        let keysPressed = {};
+        let mousePitch = 0, mouseYaw = 0;
+        let activeInteractTarget = null;
+
+        function init3DWorld() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x07080d);
+            scene.fog = new THREE.FogExp2(0x180b11, 0.035);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xff7755, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xff4422, 0.8);
+            dirLight.position.set(20, 40, 20);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            // Ground Street
+            const streetGeo = new THREE.PlaneGeometry(120, 120);
+            const streetMat = new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.8 });
+            const street = new THREE.Mesh(streetGeo, streetMat);
+            street.rotation.x = -Math.PI / 2;
+            street.receiveShadow = true;
+            scene.add(street);
+
+            // Add Road Markings
+            const roadGrid = new THREE.GridHelper(120, 24, 0xef4444, 0x334155);
+            roadGrid.position.y = 0.02;
+            scene.add(roadGrid);
+
+            // Build Town District (3D Buildings)
+            createTownBuildings();
+
+            // Build Player Character (Aleck)
+            createPlayerMesh();
+
+            // Create Telephone Booths / Stations
+            createPhoneBooths();
+
+            // Create Fire & Smoke Embers
+            createFireParticles();
+
+            // Spawn Initial Enemies
+            spawnEnemies();
+
+            // Window Resize Listener
+            window.addEventListener('resize', onWindowResize);
+
+            // Input Handlers
+            setupInputListeners();
+        }
+
+        function createTownBuildings() {
+            const buildingMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 });
+            const windowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+
+            for (let x = -40; x <= 40; x += 25) {
+                for (let z = -40; z <= 40; z += 25) {
+                    if (Math.abs(x) < 10 && Math.abs(z) < 10) continue; // Keep center clear
+
+                    const h = 12 + Math.random() * 18;
+                    const bGeo = new THREE.BoxGeometry(16, h, 16);
+                    const building = new THREE.Mesh(bGeo, buildingMat);
+                    building.position.set(x, h / 2, z);
+                    building.castShadow = true;
+                    building.receiveShadow = true;
+                    scene.add(building);
+
+                    // Add Glowing Window details
+                    const winGeo = new THREE.PlaneGeometry(1.5, 2);
+                    for (let w = 0; w < 4; w++) {
+                        const win = new THREE.Mesh(winGeo, windowMat);
+                        win.position.set(x + (Math.random() - 0.5) * 12, Math.random() * (h - 4) + 2, z + 8.1);
+                        scene.add(win);
+                    }
+                }
+            }
+        }
+
+        function createPlayerMesh() {
+            const group = new THREE.Group();
+
+            // Body
+            const bodyGeo = new THREE.CylinderGeometry(0.5, 0.6, 1.8, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.9;
+            body.castShadow = true;
+            group.add(body);
+
+            // Head
+            const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xf87171 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.0;
+            group.add(head);
+
+            // Extinguisher Tool
+            const extGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8);
+            const extMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
+            const ext = new THREE.Mesh(extGeo, extMat);
+            ext.position.set(0.6, 1.0, -0.3);
+            ext.rotation.x = Math.PI / 4;
+            group.add(ext);
+
+            playerMesh = group;
+            playerMesh.position.copy(gameState.player.position);
+            scene.add(playerMesh);
+        }
+
+        function createPhoneBooths() {
+            const locations = [
+                { x: 0, z: 5, id: 1, name: "Booths #01 - Burning Call Zone" },
+                { x: -25, z: -20, id: 2, name: "Booths #02 - Fire Station Relay" },
+                { x: 25, z: -25, id: 3, name: "Booths #03 - Aldrich's Last Location" }
+            ];
+
+            locations.forEach(loc => {
+                const boothGroup = new THREE.Group();
+
+                // Booth Frame
+                const frameGeo = new THREE.BoxGeometry(2.5, 4.5, 2.5);
+                const frameMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, transparent: true, opacity: 0.85 });
+                const frame = new THREE.Mesh(frameGeo, frameMat);
+                frame.position.y = 2.25;
+                boothGroup.add(frame);
+
+                // Phone Terminal Receiver Inside
+                const phoneGeo = new THREE.BoxGeometry(0.4, 0.8, 0.4);
+                const phoneMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+                const phone = new THREE.Mesh(phoneGeo, phoneMat);
+                phone.position.set(0, 2.2, -0.8);
+                boothGroup.add(phone);
+
+                // Glowing Beacon
+                const light = new THREE.PointLight(0xef4444, 2, 10);
+                light.position.y = 4.5;
+                boothGroup.add(light);
+
+                boothGroup.position.set(loc.x, 0, loc.z);
+                boothGroup.userData = loc;
+                scene.add(boothGroup);
+                phoneBooths.push(boothGroup);
+            });
+        }
+
+        function createFireParticles() {
+            const fireGeo = new THREE.BufferGeometry();
+            const count = 300;
+            const pos = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                pos[i] = (Math.random() - 0.5) * 80;
+                pos[i + 1] = Math.random() * 8;
+                pos[i + 2] = (Math.random() - 0.5) * 80;
+            }
+
+            fireGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const fireMat = new THREE.PointsMaterial({ color: 0xf97316, size: 0.35, transparent: true, opacity: 0.8 });
+            const particles = new THREE.Points(fireGeo, fireMat);
+            scene.add(particles);
+            fireParticles = particles;
+        }
+
+        function spawnEnemies() {
+            // Spawn 3 Guilt Specters around town
+            const positions = [
+                { x: -15, z: -10 },
+                { x: 15, z: -15 },
+                { x: 0, z: -30 }
+            ];
+
+            positions.forEach((pos, idx) => {
+                const specterGroup = new THREE.Group();
+                const geo = new THREE.SphereGeometry(1, 16, 16);
+                const mat = new THREE.MeshStandardMaterial({ color: 0xd97706, wireframe: true });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.y = 1.5;
+                specterGroup.add(mesh);
+
+                specterGroup.position.set(pos.x, 0, pos.z);
+                specterGroup.userData = {
+                    id: 'specter_' + idx,
+                    hp: 50,
+                    maxHp: 50,
+                    damage: 8,
+                    speed: 0.03
+                };
+
+                scene.add(specterGroup);
+                gameState.enemies.push(specterGroup);
+            });
+        }
+
+        function spawnBoss() {
+            if (gameState.boss) return;
+
+            const bossGroup = new THREE.Group();
+            const geo = new THREE.IcosahedronGeometry(2.5, 2);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0x991b1b, roughness: 0.2 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.y = 3;
+            bossGroup.add(mesh);
+
+            // Boss Flame Aura Light
+            const bossLight = new THREE.PointLight(0xef4444, 4, 15);
+            bossLight.position.y = 3;
+            bossGroup.add(bossLight);
+
+            bossGroup.position.set(0, 0, -35);
+            bossGroup.userData = {
+                name: "THE DENIED PROTOCOL - ALDRICH'S PHANTOM",
+                hp: 300,
+                maxHp: 300,
+                damage: 15
+            };
+
+            scene.add(bossGroup);
+            gameState.boss = bossGroup;
+
+            // Show Boss HUD
+            document.getElementById('boss-hud').classList.remove('hidden');
+            document.getElementById('boss-name').innerText = bossGroup.userData.name;
+            updateBossHpUI();
+        }
+
+        function attackWaterPulse() {
+            audio.playWaterPulse();
+
+            // Create Visual Water Cannon Particle Stream
+            const streamGeo = new THREE.SphereGeometry(0.3, 8, 8);
+            const streamMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+            const projectile = new THREE.Mesh(streamGeo, streamMat);
+
+            const pPos = playerMesh.position.clone();
+            projectile.position.set(pPos.x, 1.2, pPos.z);
+
+            const dir = new THREE.Vector3(
+                -Math.sin(playerMesh.rotation.y),
+                0,
+                -Math.cos(playerMesh.rotation.y)
+            ).normalize();
+
+            scene.add(projectile);
+
+            let distanceTraveled = 0;
+            const pInterval = setInterval(() => {
+                projectile.position.addScaledVector(dir, 0.8);
+                distanceTraveled += 0.8;
+
+                // Hit detection against enemies
+                gameState.enemies.forEach((enemy, idx) => {
+                    if (enemy && projectile.position.distanceTo(enemy.position) < 1.5) {
+                        damageEnemy(enemy, 25, idx);
+                        scene.remove(projectile);
+                        clearInterval(pInterval);
+                    }
+                });
+
+                // Hit detection against Boss
+                if (gameState.boss && projectile.position.distanceTo(gameState.boss.position) < 3.0) {
+                    damageBoss(25);
+                    scene.remove(projectile);
+                    clearInterval(pInterval);
+                }
+
+                if (distanceTraveled > 25) {
+                    scene.remove(projectile);
+                    clearInterval(pInterval);
+                }
+            }, 30);
+        }
+
+        function damageEnemy(enemy, damage, index) {
+            audio.playHitSound();
+            enemy.userData.hp -= damage;
+
+            if (enemy.userData.hp <= 0) {
+                scene.remove(enemy);
+                gameState.enemies.splice(index, 1);
+                addXP(25);
+
+                // Update Quest if in combat stage
+                if (gameState.quest.stage === 2 && gameState.enemies.length === 0) {
+                    gameState.quest.stage = 3;
+                    gameState.quest.title = "Answer Aldrich's Protocol";
+                    gameState.quest.description = "The specters are extinguished! Answer the phone call from Aldrich before guilt consumes you!";
+                    updateQuestUI();
+                    triggerIncomingCall();
+                }
+            }
+        }
+
+        function damageBoss(damage) {
+            if (!gameState.boss) return;
+            audio.playHitSound();
+
+            gameState.boss.userData.hp -= damage;
+            updateBossHpUI();
+
+            if (gameState.boss.userData.hp <= 0) {
+                scene.remove(gameState.boss);
+                gameState.boss = null;
+                document.getElementById('boss-hud').classList.add('hidden');
+                
+                // Final Victory Dialog
+                alert("VICTORY! You faced the Denied Protocol and accepted Aldrich's message. Moral Lesson Learned: Always respond in times of emergency!");
+            }
+        }
+
+        function addXP(amount) {
+            gameState.player.xp += amount;
+            if (gameState.player.xp >= 50) {
+                gameState.player.level += 1;
+                gameState.player.xp = 0;
+                gameState.player.skillPoints += 1;
+                gameState.player.maxHp += 20;
+                gameState.player.hp = gameState.player.maxHp;
+                updateStatsUI();
+            }
+        }
+
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                keysPressed[e.key.toLowerCase()] = true;
+
+                if (e.key.toLowerCase() === 'e' && activeInteractTarget) {
+                    interactWithTarget(activeInteractTarget);
+                }
+                if (e.key.toLowerCase() === 'f') {
+                    answerIncomingCall();
+                }
+                if (e.key.toLowerCase() === 'v') {
+                    toggleCameraView();
+                }
+                if (e.key.toLowerCase() === 'i') {
+                    toggleModal('modal-inventory');
+                }
+                if (e.key.toLowerCase() === 'k') {
+                    toggleModal('modal-skills');
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                keysPressed[e.key.toLowerCase()] = false;
+            });
+
+            window.addEventListener('mousedown', (e) => {
+                if (e.button === 0 && gameState.started && !isAnyModalOpen()) {
+                    attackWaterPulse();
+                }
+            });
+        }
+
+        function toggleCameraView() {
+            gameState.cameraMode = gameState.cameraMode === 'third' ? 'first' : 'third';
+        }
+
+        function isAnyModalOpen() {
+            return !document.getElementById('modal-phone').classList.contains('hidden') ||
+                   !document.getElementById('modal-inventory').classList.contains('hidden') ||
+                   !document.getElementById('modal-skills').classList.contains('hidden');
+        }
+
+        function interactWithTarget(target) {
+            if (target.userData.id === 1) {
+                openPhoneTerminal(1);
+            } else if (target.userData.id === 2) {
+                openPhoneTerminal(2);
+            } else if (target.userData.id === 3) {
+                if (gameState.quest.stage < 4) {
+                    spawnBoss();
+                }
+            }
+        }
+
+        function triggerIncomingCall() {
+            audio.playRingtone();
+            document.getElementById('call-incoming-prompt').classList.remove('hidden');
+        }
+
+        function answerIncomingCall() {
+            document.getElementById('call-incoming-prompt').classList.add('hidden');
+            openPhoneTerminal(1);
+        }
+
+        function openPhoneTerminal(boothId) {
+            audio.init();
+            const modal = document.getElementById('modal-phone');
+            const history = document.getElementById('phone-chat-history');
+            const options = document.getElementById('phone-options');
+
+            history.innerHTML = '';
+            options.innerHTML = '';
+
+            if (boothId === 1) {
+                appendChatMessage('Aldrich', 'Aleck! Is that you? I tried calling earlier but you denied! I am trapped in the building fire on 3rd street!', 'text-amber-400');
+                appendChatMessage('Aleck', 'Aldrich... I denied the call earlier because I was guilty and afraid of breaking emergency response protocols...', 'text-cyan-400');
+
+                options.innerHTML = `
+                    <button onclick="chooseDialog(1)" class="bg-red-900/80 hover:bg-red-800 text-white p-2.5 rounded-lg text-xs font-mono-tech border border-red-600 text-left transition">
+                        [1] "I'm coming now! Hold on! I am overriding protocol to reach you!"
+                    </button>
+                    <button onclick="chooseDialog(2)" class="bg-slate-800 hover:bg-slate-700 text-gray-300 p-2.5 rounded-lg text-xs font-mono-tech border border-slate-600 text-left transition">
+                        [2] "Send me your exact location code via text serial right now."
+                    </button>
+                `;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function appendChatMessage(sender, text, colorClass) {
+            const history = document.getElementById('phone-chat-history');
+            const msg = document.createElement('div');
+            msg.className = `p-2.5 rounded-lg bg-slate-900 border border-slate-800 ${colorClass}`;
+            msg.innerHTML = `<b>${sender}:</b> ${text}`;
+            history.appendChild(msg);
+            history.scrollTop = history.scrollHeight;
+        }
+
+        function chooseDialog(choice) {
+            audio.playBeep(1000, 'sine', 0.08);
+            if (choice === 1) {
+                appendChatMessage('Aleck', 'I am coming now! Hold on! I am overriding protocol to reach you!', 'text-cyan-400');
+                appendChatMessage('Aldrich', 'Thank you Aleck... Please hurry, the specters of guilt are blocking the street!', 'text-amber-400');
+                
+                gameState.player.guilt = Math.max(0, gameState.player.guilt - 20);
+                gameState.player.trust += 25;
+                updateStatsUI();
+
+                setTimeout(() => {
+                    closeModal('modal-phone');
+                    spawnBoss();
+                }, 1500);
+            } else {
+                appendChatMessage('Aleck', 'Send me your exact location code via text serial right now.', 'text-cyan-400');
+                appendChatMessage('Aldrich', 'Location: Zone 3 Dispatch Terminal! Hurry!', 'text-amber-400');
+                
+                setTimeout(() => {
+                    closeModal('modal-phone');
+                    spawnBoss();
+                }, 1500);
+            }
+        }
+
+        function selectClass(className, btn) {
+            gameState.player.class = className;
+            document.querySelectorAll('.class-btn').forEach(b => {
+                b.className = 'class-btn border border-slate-700 bg-slate-950 text-gray-400 p-2 rounded-lg text-xs font-mono-tech text-center';
+            });
+            btn.className = 'class-btn border-2 border-red-500 bg-red-950/40 text-white p-2 rounded-lg text-xs font-mono-tech font-bold text-center';
+            updateStatsUI();
+        }
+
+        function renderInventory() {
+            const list = document.getElementById('inventory-list');
+            list.innerHTML = '';
+
+            gameState.inventory.forEach(item => {
+                const slot = document.createElement('div');
+                slot.className = 'bg-slate-900 hover:bg-slate-800 p-2.5 rounded-lg border border-slate-700 cursor-pointer transition';
+                slot.innerHTML = `
+                    <div class="font-bold text-xs text-amber-300">${item.name}</div>
+                    <div class="text-[9px] text-gray-400 font-mono-tech">${item.type}</div>
+                `;
+                slot.onclick = () => {
+                    document.getElementById('item-detail-title').innerText = item.name;
+                    document.getElementById('item-detail-type').innerText = item.type;
+                    document.getElementById('item-detail-desc').innerText = item.desc;
+                    const useBtn = document.getElementById('btn-use-item');
+                    if (item.usable) {
+                        useBtn.classList.remove('hidden');
+                        useBtn.onclick = () => useInventoryItem(item.id);
+                    } else {
+                        useBtn.classList.add('hidden');
+                    }
+                };
+                list.appendChild(slot);
+            });
+        }
+
+        function useInventoryItem(itemId) {
+            if (itemId === 'extinguisher') {
+                gameState.player.hp = Math.min(gameState.player.maxHp, gameState.player.hp + 30);
+                updateStatsUI();
+                alert("Used Emergency Extinguisher: Restored 30 HP!");
+            } else if (itemId === 'protocol_manual') {
+                gameState.player.guilt = Math.max(0, gameState.player.guilt - 15);
+                updateStatsUI();
+                alert("Read Protocol Manual: Guilt Level reduced by 15%!");
+            }
+        }
+
+        function renderSkills() {
+            const grid = document.getElementById('skills-grid');
+            grid.innerHTML = '';
+            document.getElementById('skill-points-count').innerText = gameState.player.skillPoints;
+
+            gameState.skills.forEach(skill => {
+                const card = document.createElement('div');
+                card.className = `p-3.5 rounded-xl border ${skill.unlocked ? 'bg-cyan-950/30 border-cyan-500' : 'bg-slate-950 border-slate-800'}`;
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-xs ${skill.unlocked ? 'text-cyan-400' : 'text-gray-300'}">${skill.name}</span>
+                        <span class="text-[10px] font-mono-tech ${skill.unlocked ? 'text-emerald-400' : 'text-amber-400'}">
+                            ${skill.unlocked ? 'UNLOCKED' : 'COST: ' + skill.cost + ' SP'}
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-gray-400 leading-relaxed mb-2">${skill.desc}</p>
+                    ${!skill.unlocked ? `
+                        <button onclick="unlockSkill('${skill.id}')" class="w-full bg-cyan-700 hover:bg-cyan-600 text-white text-xs py-1 rounded font-mono-tech transition">
+                            UNLOCK SKILL
+                        </button>
+                    ` : ''}
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function unlockSkill(skillId) {
+            const skill = gameState.skills.find(s => s.id === skillId);
+            if (skill && !skill.unlocked && gameState.player.skillPoints >= skill.cost) {
+                gameState.player.skillPoints -= skill.cost;
+                skill.unlocked = true;
+                renderSkills();
+                audio.playBeep(1200, 'sine', 0.15);
+            }
+        }
+
+        function updateStatsUI() {
+            document.getElementById('player-name-class').innerText = `${gameState.player.name.toUpperCase()} [${gameState.player.class.toUpperCase()}]`;
+            document.getElementById('player-level').innerText = `LVL ${gameState.player.level}`;
+            document.getElementById('hp-text').innerText = `${gameState.player.hp} / ${gameState.player.maxHp}`;
+            document.getElementById('hp-bar').style.width = `${(gameState.player.hp / gameState.player.maxHp) * 100}%`;
+            document.getElementById('mp-text').innerText = `${gameState.player.mp} / ${gameState.player.maxMp}`;
+            document.getElementById('mp-bar').style.width = `${(gameState.player.mp / gameState.player.maxMp) * 100}%`;
+            document.getElementById('guilt-text').innerText = `${gameState.player.guilt}% (${gameState.player.guilt > 50 ? 'Severe' : 'Calm'})`;
+            document.getElementById('trust-text').innerText = `${gameState.player.trust}%`;
+        }
+
+        function updateBossHpUI() {
+            if (!gameState.boss) return;
+            const hp = Math.max(0, gameState.boss.userData.hp);
+            const maxHp = gameState.boss.userData.maxHp;
+            document.getElementById('boss-hp-text').innerText = `${hp} / ${maxHp}`;
+            document.getElementById('boss-hp-bar').style.width = `${(hp / maxHp) * 100}%`;
+        }
+
+        function updateQuestUI() {
+            document.getElementById('quest-title').innerText = gameState.quest.title;
+            document.getElementById('quest-desc').innerText = gameState.quest.description;
+        }
+
+        function updateMinimap() {
+            const canvas = document.getElementById('minimap');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            // Player Marker
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Phone Booth Markers
+            ctx.fillStyle = '#ef4444';
+            phoneBooths.forEach(booth => {
+                const mx = cx + (booth.position.x - playerMesh.position.x) * 1.5;
+                const my = cy + (booth.position.z - playerMesh.position.z) * 1.5;
+                if (mx > 5 && mx < canvas.width - 5 && my > 5 && my < canvas.height - 5) {
+                    ctx.beginPath();
+                    ctx.arc(mx, my, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+
+        function toggleModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                if (modalId === 'modal-inventory') renderInventory();
+                if (modalId === 'modal-skills') renderSkills();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function startGame() {
+            audio.init();
+            document.getElementById('start-screen').classList.add('hidden');
+            gameState.started = true;
+            updateStatsUI();
+            updateQuestUI();
+            animate();
+        }
+
+        function updatePlayerMovement() {
+            if (!gameState.started || isAnyModalOpen()) return;
+
+            const speed = 0.15;
+            let moveX = 0;
+            let moveZ = 0;
+
+            if (keysPressed['w']) moveZ -= speed;
+            if (keysPressed['s']) moveZ += speed;
+            if (keysPressed['a']) moveX -= speed;
+            if (keysPressed['d']) moveX += speed;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const angle = Math.atan2(moveX, moveZ);
+                playerMesh.rotation.y = angle;
+
+                playerMesh.position.x += moveX;
+                playerMesh.position.z += moveZ;
+                gameState.player.position.copy(playerMesh.position);
+            }
+
+            // Camera Follow Logic
+            if (gameState.cameraMode === 'third') {
+                camera.position.x = playerMesh.position.x;
+                camera.position.y = playerMesh.position.y + 6;
+                camera.position.z = playerMesh.position.z + 10;
+                camera.lookAt(playerMesh.position.x, playerMesh.position.y + 1, playerMesh.position.z);
+            } else {
+                camera.position.x = playerMesh.position.x;
+                camera.position.y = playerMesh.position.y + 1.8;
+                camera.position.z = playerMesh.position.z;
+                camera.rotation.y = playerMesh.rotation.y;
+            }
+
+            // Proximity interaction check
+            activeInteractTarget = null;
+            let promptShown = false;
+
+            phoneBooths.forEach(booth => {
+                const dist = playerMesh.position.distanceTo(booth.position);
+                if (dist < 3.5) {
+                    activeInteractTarget = booth;
+                    document.getElementById('interaction-prompt').classList.remove('hidden');
+                    document.getElementById('prompt-desc').innerText = booth.userData.name;
+                    promptShown = true;
+                }
+            });
+
+            if (!promptShown) {
+                document.getElementById('interaction-prompt').classList.add('hidden');
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            updatePlayerMovement();
+            updateMinimap();
+
+            // Animate Fire Particles
+            if (fireParticles) {
+                const pos = fireParticles.geometry.attributes.position.array;
+                for (let i = 1; i < pos.length; i += 3) {
+                    pos[i] += 0.03;
+                    if (pos[i] > 8) pos[i] = 0;
+                }
+                fireParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Specters Movement
+            gameState.enemies.forEach(enemy => {
+                enemy.rotation.y += 0.02;
+                // Move towards player slowly
+                const dir = playerMesh.position.clone().sub(enemy.position).normalize();
+                enemy.position.addScaledVector(dir, enemy.userData.speed);
+            });
+
+            // Boss Rotation & Attack Aura
+            if (gameState.boss) {
+                gameState.boss.rotation.y += 0.015;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize 3D Engine on load
+        window.onload = function() {
+            init3DWorld();
+        };
+    </script>
+</body>
+</html>
